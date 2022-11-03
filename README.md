@@ -1,4 +1,4 @@
-##DRY code
+## DRY code
 
 In this coding club, we will be discussing about a programming principle aimed at reducing the repetition of code patterns within a script. 
 The acronym for this principle is DRY, and stands for: " Don´t Repeat Yourself". 
