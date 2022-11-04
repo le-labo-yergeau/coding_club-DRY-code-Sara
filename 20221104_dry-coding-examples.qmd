@@ -1,0 +1,151 @@
+---
+title: "DRY code examples"
+format:
+  html:
+    theme: spacelab
+    toc: true
+    number-sections: true
+    author: Sara Correa García
+---
+
+# Load libraries
+```{r}
+pacman::p_load(pacman, broom, here, doBy, tidyverse)
+```
+
+# Creating summary tables with doBy
+
+## Load data
+```{r}
+prok.treat = read.csv(file = here("prok.treat.csv"), row.names = 1)
+```
+
+## Inspect the data
+```{r}
+dim(prok.treat)
+str(prok.treat)
+View(prok.treat)
+```
+
+## Summarize data
+You can look at basic summary statistics one by one
+```{r}
+adhP.sum = summary(prok.treat$adhP)
+adhP.sum
+aliA.sum = summary(prok.treat$aliA)
+aliA.sum
+badH.sum = summary(prok.treat$badH)
+badH.sum
+bamB.sum = summary(prok.treat$bamB)
+bamB.sum
+# This can quickly become too repetitive. Also, what if I had 1000 instead of 16 genes?
+```
+
+We can dry our code by looking at paterns that repeat in our code that we can abstract.
+
+## Evaluate Summary statistics for all gene groups using specific libraries
+```{r}
+library(doBy)
+colnames(prok.treat)
+genes_summary = as_tibble(summaryBy(adhP + aliA + badH + bamB + bamD + fadJ + fadN + gabD + mhpD + mhpE + phaZ + pobA + ppk + putA + soxY + soxZ ~ group, data = prok.treat, FUN = function(x) { c(mean = mean(x), sd = sd(x)) } ) ) |> 
+    mutate(across(where(is.numeric), ~ num(., digits = 2)))
+write_csv(genes_summary, file = here( "genes-summary-counts-cpm.csv"))
+```
+
+
+## Alternatively a drier version
+
+```{r}
+# Select only numerical variables (NA degradation and absolute abundance of genes, and the grouping variable)
+prok.treat.dry = prok.treat |> 
+               select_at(vars(group,names(prok.treat)[map_lgl(prok.treat, is.numeric)])) 
+# Create a vector genes_to-test pasting the column names of our genes (starting at 3, because column 1 is group and column 2 is NA_ppm and going all the way up to the last column). The argument collapse indicates the separation between colnames. We include a + because we want a string that can be passed as a formula later on.
+genes_to_test = paste(c(names(prok.treat.dry[,3:ncol(prok.treat.dry)])), collapse = " + ") 
+#Use the function doBy::summaryBy coupled with the function as.formula to calculate the mean and the sd for all the genes in the string. 
+genes_summary_dry = as_tibble(summaryBy(as.formula(paste(genes_to_test, "~ group")), data = prok.treat.dry, FUN = function(x) { c(mean = mean(x), sd = sd(x))})) |> 
+    mutate(across(where(is.numeric), ~ num(., digits = 2)))
+```
+
+
+
+
+# Kruskal Wallis tests. Looping!
+
+Using the same data set, calculate a kruskal Wallis test for all genes. 
+
+In this exercise, you will need to complete the code. There are missing parts (function, objects...) replaced by and "#". 
+
+--- Let's start!
+You first need to transform as a tibble. Then, you need to gather the genes that belong to the same group level. You can use the tidyverse to make it easier. 
+
+```{r}
+dry.kw = as_#(data.frame(prok.treat.dry)) |> #(group)
+```
+
+--- Too difficult? You can take a look
+```{r}
+dry.kw = as_tibble(data.frame(prok.treat.dry)) |> group_by(group)
+```
+
+--- 
+Use gather to pair key-value (gene name-abundance) pairs and pivot to long format. Remember, gather requires data to be as data.frame, so you need to previously transform dry.kw to fit!
+Then, you can group by key (gene name). Finally, you can run the kruskal wallis
+```{r}
+dry.kw = ##.data.frame(dry.kw)
+dry.kw.loop = dry.kw |> gather(key, value, -####)  |> # Don't forget to exclude the group variable
+  group_by(###) |>  # Group by gene name
+  do(tidy(kruskal.test(x = .$###, g = .$###))) # To know more about which arguments are passing to the kruskal.test function you can type ?kruskal.test in the console. 
+```
+
+--- Hint
+
+```{r}
+dry.kw = as.data.frame(dry.kw)
+dry.kw.loop = dry.kw |> gather(key, value, -group)  |>
+  group_by(key) |>  
+  do(tidy(kruskal.test(x = .$value, g = .$group)))
+```
+
+--- Moving on to add the cherry on top
+
+Because we calculated a large number of test, the chances to find significant values when in reality they are not, have escalated as quickly as our performance when we apply dry code. 
+To avoid it, we can adjust our p values to reduce our false discovery rate.
+Keeping up with the tibble, we can pass the fucntion mutate to create a new variable in our dry.kw.loop.
+Alternatively, we can do it after transforming our table into a dataframe. 
+Finally, we can save our results using the here() package
+```{r}
+dry.kw.loop |> 
+   mutate(pval.adj = ###(p.value, method = "BH")) # What is the name of the function
+as.data.frame(dry.kw.loop)
+dry.kw.loop$### = ####(dry.kw.loop$p.value, method = "##") # select a method of your choice
+write.csv(dry.kw.loop, file = #(#gene_KW.csv#))
+```
+
+--- Hint
+
+```{r}
+dry.kw.loop |> 
+   mutate(pval.adj = p.adjust(p.value, method = "BH"))# check
+as.data.frame(dry.kw.loop)
+dry.kw.loop$p.adjust = p.adjust(dry.kw.loop$p.value, method = "BH")
+write.csv(dry.kw.loop, file = here("gene_KW.csv"))
+```
+
+
+
+--- Take a look at the final code
+
+```{r}
+prok.treat.dry
+dry.kw = as_tibble(data.frame(prok.treat.dry)) |> group_by(group) #
+dry.kw = as.data.frame(dry.kw)
+dry.kw.loop = dry.kw |> gather(key, value, -group)  |>
+  group_by(key) |>  
+  do(tidy(kruskal.test(x = .$value, g = .$group)))
+dry.kw.loop |> 
+   mutate(pval.adj = p.adjust(p.value, method = "BH"))# check
+as.data.frame(dry.kw.loop)
+dry.kw.loop$p.adjust = p.adjust(dry.kw.loop$p.value, method = "BH")
+write.csv(dry.kw.loop, file = here("gene_KW.csv"))
+```
+
